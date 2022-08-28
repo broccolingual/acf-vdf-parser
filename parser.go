@@ -11,54 +11,122 @@ import (
 )
 
 type Node struct {
-	name     string
-	children []Node
+	Name     string
+	Parent   *Node
+	Children []*Node
+	List     []*Element
 }
 
-func NewNode() *Node {
-	return &Node{}
+func NewNode(name string) *Node {
+	return &Node{Name: name}
+}
+
+func (n *Node) AddChild(name string) *Node {
+	childNode := NewNode(name)
+	childNode.Parent = n
+	n.Children = append(n.Children, childNode)
+	return childNode
+}
+
+func (n *Node) ReturnParent() *Node {
+	if n.Parent != nil {
+		return n.Parent
+	}
+	return nil
+}
+
+func (n *Node) SearchTree(nodeLevel int) {
+	if nodeLevel == 0 {
+		fmt.Printf("Level\tTag\tElements\n")
+		fmt.Printf("----------------------------------------\n")
+	}
+	fmt.Printf("%d\t%s\n", nodeLevel, n.Name)
+	if n.List != nil {
+		for _, element := range n.List {
+			fmt.Printf("\t\t%-10s: %s\n", element.Key, element.Value)
+		}
+	}
+	if n.Children != nil {
+		for _, child := range n.Children {
+			child.SearchTree(nodeLevel + 1)
+		}
+	}
 }
 
 type Element struct {
-	key   string
-	value string
+	Key   string
+	Value string
 }
 
 type Parser struct {
-	root        Node
-	openBraces  int
-	closeBraces int
-	lines       int
+	Root   *Node
+	Cursor *Node
 }
 
 func NewParser() *Parser {
-	return &Parser{
-		root:        *NewNode(),
-		openBraces:  0,
-		closeBraces: 0,
-		lines:       0,
-	}
+	return &Parser{}
 }
 
 func Normalize(t string) string {
 	return strings.Trim(strings.TrimSpace(t), `\t`)
 }
 
-func (p *Parser) Parse(text string) error {
-	text = Normalize(text)
-	r, _ := regexp.Compile(`\"([A-Za-z0-9\\\:\-\(\)\ \_]*)\"`)
-	if text == "" {
-		return nil
+func (p *Parser) Parse(lines []string) error {
+	// Normalize
+	for i, _ := range lines {
+		lines[i] = Normalize(lines[i])
 	}
-	p.lines++
-	if text == "{" {
-		p.openBraces++
-	} else if text == "}" {
-		p.closeBraces++
-	} else if r.MatchString(text) {
-		fmt.Println(r.FindAllString(text, -1))
-	} else {
-		return errors.New("Parser Error: Contains the wrong string.")
+
+	// Parse Lines
+	index := 0
+	nodeLevel := 0
+	r, _ := regexp.Compile(`\"([A-Za-z0-9\\\:\-\(\)\ \_\.]*)\"`)
+
+loop:
+	for {
+		if index == len(lines) {
+			if nodeLevel == 0 {
+				break loop
+			}
+			return errors.New("Parser Error: Unmatched number of braces.")
+		}
+
+		line := lines[index]
+		index++
+
+		if line == "" {
+			continue loop
+		} else if r.MatchString(line) {
+			matches := r.FindAllString(line, -1)
+			if len(matches) == 2 {
+				key := strings.Trim(matches[0], `"`)
+				value := strings.Trim(matches[1], `"`)
+				p.Cursor.List = append(p.Cursor.List, &Element{Key: key, Value: value})
+				continue loop
+			} else if len(matches) == 1 && lines[index] == "{" {
+				index++
+				tag := strings.Trim(matches[0], `"`)
+				if nodeLevel == 0 {
+					p.Root = NewNode(tag)
+					p.Cursor = p.Root
+					nodeLevel++
+				} else {
+					p.Cursor = p.Cursor.AddChild(tag)
+					nodeLevel++
+				}
+				continue loop
+			} else {
+				return errors.New("Parser Error: Contains the wrong string.")
+			}
+		} else if line == "}" {
+			if p.Cursor.Parent != nil {
+				p.Cursor = p.Cursor.ReturnParent()
+			}
+			nodeLevel--
+			continue loop
+		} else {
+			return errors.New("Parser Error: Contains the wrong string.")
+		}
 	}
 	return nil
 }
@@ -76,20 +144,21 @@ func main() {
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	parser := NewParser()
+	var lines []string
 	for scanner.Scan() {
-		line := scanner.Text()
-		err = parser.Parse(line)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-	}
-	if parser.openBraces != parser.closeBraces {
-		log.Println("Parser Error: Unmatched number of parentheses.")
-		return
+		lines = append(lines, scanner.Text())
 	}
 	if err = scanner.Err(); err != nil {
 		log.Println(err)
 		return
 	}
+	err = parser.Parse(lines)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	fmt.Println("Parse Success!")
+
+	// Test
+	parser.Root.SearchTree(0)
 }
