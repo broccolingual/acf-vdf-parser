@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -14,11 +15,11 @@ type Node struct {
 	Name     string
 	Parent   *Node
 	Children []*Node
-	List     []*Element
+	List     map[string]string
 }
 
 func NewNode(name string) *Node {
-	return &Node{Name: name}
+	return &Node{Name: name, List: make(map[string]string)}
 }
 
 func (n *Node) AddChild(name string) *Node {
@@ -42,8 +43,8 @@ func (n *Node) SearchTree(nodeLevel int) {
 	}
 	fmt.Printf("%d\t%s\n", nodeLevel, n.Name)
 	if n.List != nil {
-		for _, element := range n.List {
-			fmt.Printf("\t\t%-10s: %s\n", element.Key, element.Value)
+		for key, value := range n.List {
+			fmt.Printf("\t\t%-10s: %s\n", key, value)
 		}
 	}
 	if n.Children != nil {
@@ -51,11 +52,6 @@ func (n *Node) SearchTree(nodeLevel int) {
 			child.SearchTree(nodeLevel + 1)
 		}
 	}
-}
-
-type Element struct {
-	Key   string
-	Value string
 }
 
 type Parser struct {
@@ -101,7 +97,7 @@ loop:
 			if len(matches) == 2 {
 				key := strings.Trim(matches[0], `"`)
 				value := strings.Trim(matches[1], `"`)
-				p.Cursor.List = append(p.Cursor.List, &Element{Key: key, Value: value})
+				p.Cursor.List[key] = value
 				continue loop
 			} else if len(matches) == 1 && lines[index] == "{" {
 				index++
@@ -136,9 +132,15 @@ func main() {
 		log.Println("need args as input file")
 		return
 	}
-	f, err := os.Open(os.Args[1])
+	path := os.Args[1]
+	ext := filepath.Ext(path)
+	f, err := os.Open(path)
 	if err != nil {
 		log.Println(err)
+		return
+	}
+	if ext != ".acf" && ext != ".vdf" {
+		log.Println("Extention Error: This file is not '.acf' or 'vdf' file.")
 		return
 	}
 	defer f.Close()
